@@ -6,8 +6,12 @@ import qualified Data.Optic.Graph as G
 import qualified Data.Optic.Graph.Extras as G
 
 import qualified Logic.Var as V
+import qualified Logic.Type as T
 import           Logic.Formula
 import           Logic.ImplicationGraph
+
+
+type RenameMap = Map.Map V.Var V.Var
 
 
 -- | Finds irreducible vertices in a given `ImplGr`.
@@ -44,5 +48,25 @@ conjunction edge edge' =
 
 
 disjunction :: Edge -> Edge -> Edge
-disjunction = undefined
+disjunction e1 e2 =
+  let
+    combinedMap = combine (_edgeMap e1) (_edgeMap e2)
+  in
+    Edge {
+      _edgeForm = mkOr (fitEdge e1 combinedMap) (fitEdge e2 combinedMap),
+      _edgeMap = combinedMap
+    }
+  where
+    combine :: RenameMap -> RenameMap -> RenameMap
+    combine rm rm' = Map.unionWith max rm rm'
 
+    maxTemporality :: V.Var -> RenameMap -> V.Var
+    maxTemporality v rm = fromMaybe v $ max v <$> Map.lookup v rm
+
+    fitEdge :: Edge -> RenameMap -> Form
+    fitEdge e rm = foldr folder (_edgeForm e) (Map.toList $ _edgeMap e)
+      where
+      eqlForm v' v = Eql (T.typeOf v) :@ V v' :@ V v
+
+      folder (k, v) f = let v' = maxTemporality k rm in
+        if v' > v then mkAnd (eqlForm v' v) f else f
