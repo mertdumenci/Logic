@@ -13,3 +13,8 @@ cabal.config
 
 # Ignore `jenv`
 java-parse/.java-version
+
+# Generated
+*.dot
+*.pdf
+test.json

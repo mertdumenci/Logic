@@ -34,10 +34,10 @@ instance Pretty Var
 -- representation of the index. Otherwise, it is just the variable name.
 varName :: Var -> Name
 varName (Bound i _) = "!" ++ show i
-varName (Free ns i _) = path ns ++ "/" ++ (show i)
-  where
-    path :: [String] -> Name
-    path ns = intercalate "/" ns
+varName (Free ns i _) = case i of
+  0 -> path ns
+  _ -> path ns ++ "/" ++ show i
+  where path = intercalate "/"
 
 -- | A traversal which targets all of the variables in a given expression.
 vars :: Data a => Traversal' a Var
@@ -77,6 +77,26 @@ abstract vs f =
 
 -- | Replace bound variables in the structure by those in the list.
 instantiate :: Data a => [Var] -> a -> a
-instantiate vs f =
-  let m = foldl (\(n, m') v -> (n + 1, M.insert (Bound n (T.typeOf v)) v m')) (0, M.empty) vs
-  in subst (snd m) f
+instantiate vs =
+  let ts = map T.typeOf vs
+      bs = zipWith Bound [0..] ts
+      m = M.fromList (zip bs vs)
+  in subst m
+
+-- | Get the path of a var
+varPath :: Var -> Maybe [String]
+varPath = \case
+  Free p _ _ -> Just p
+  _ -> Nothing
+
+-- | Get the alias count of a var
+aliasCount :: Var -> Maybe Int
+aliasCount = \case
+  Free _ c _ -> Just c
+  _ -> Nothing
+
+-- | Increase var alias count
+bumpVar :: (Int -> Int) -> Var -> Var
+bumpVar f = \case
+  Free p a t -> Free p (f a) t
+  other -> other

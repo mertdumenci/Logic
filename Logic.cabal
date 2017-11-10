@@ -13,7 +13,7 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  ghc-options: -Wall
+  ghc-options: -Wall, -O2
   exposed-modules:     Logic.Formula
                      , Logic.Formula.Parser
                      , Logic.Var
@@ -24,10 +24,10 @@ library
                      , Logic.ImplicationGraph.Induction
                      , Logic.ImplicationGraph.Equivalence
                      , Logic.ImplicationGraph.Safety
+                     , Logic.ImplicationGraph.Simplify
+                      , Logic.ImplicationGraph.JSONParser
                      , Logic.Solver.Z3
                      , Data.Optic.Graph.Extras
-                     , Logic.ImplicationGraph.JSONParser
-                     , Logic.ImplicationGraph.Optimize
 
   default-extensions:  LambdaCase
                      , DeriveDataTypeable
@@ -92,7 +92,22 @@ executable ImplicationGraphExample
                      , bytestring
   default-language:    Haskell2010
 
-executable EquivalenceExample
+executable SimplifyExample
+  hs-source-dirs:      app
+  main-is:             SimplifyExample.hs
+  ghc-options:
+  build-depends:       base
+                     , text             >= 1.2
+                     , mtl
+                     , prettyprinter
+                     , containers
+                     , Logic
+                     , optic-graph
+                     , bytestring
+                     , lens             >= 4.15
+  default-language:    Haskell2010
+
+executable ImperativeExample
   hs-source-dirs:      app
   main-is:             EquivalenceExample.hs
   ghc-options:

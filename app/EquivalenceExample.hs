@@ -26,8 +26,8 @@ import           Logic.ImplicationGraph.Equivalence
 --   return r;
 -- }
 
-g1 :: ImplGr Integer
-g1 = G.fromLists
+cs0 :: ImplGr Integer
+cs0 = G.fromLists
   [ (0, emptyInst [])
   , (1, emptyInst [n, r])
   , (2, emptyInst [n, r, s, p, i])
@@ -37,10 +37,10 @@ g1 = G.fromLists
   , (1, 3, Edge [form|n:Int <= 1 && r':Int = 1|] (M.fromList [(r, r')]))
   , (1, 2, Edge [form|n:Int > 1 && s:Int = 2 && p:Int = 1 && i:Int = 2|] M.empty)
   , (2, 2, Edge [form|i:Int < n:Int
-                   && i':Int = i:Int+1
-                   && s':Int = s:Int + p:Int
-                   && p':Int = s:Int |] (M.fromList [(i, i'), (s, s'), (p, p')]))
-  , (2, 3 , Edge [form|i:Int >= n:Int && r':Int = s:Int|] (M.fromList [(r, r')]))
+                   && i/1:Int = i:Int+1
+                   && s/1:Int = s:Int + p:Int
+                   && p/1:Int = s:Int |] (M.fromList [(i, i'), (s, s'), (p, p')]))
+  , (2, 3 , Edge [form|i:Int >= n:Int && r/1:Int = s:Int|] (M.fromList [(r, r')]))
   ]
 
 
@@ -60,8 +60,8 @@ g1 = G.fromLists
 --   return x;
 -- }
 
-g2 :: ImplGr Integer
-g2 = G.fromLists
+cs1 :: ImplGr Integer
+cs1 = G.fromLists
   [ (0, emptyInst [])
   , (1, emptyInst [m, x])
   , (2, emptyInst [m, x, c1, c2, j])
@@ -78,30 +78,55 @@ g2 = G.fromLists
   , (2, 3, Edge [form|j:Int > m:Int && x':Int = c2:Int|] (M.fromList [(x, x')]))
   ]
 
-x   = Free "x" T.Int
-x'  = Free "x'" T.Int
-c1  = Free "c1" T.Int
-c1' = Free "c1'" T.Int
-m   = Free "m" T.Int
-c2  = Free "c2" T.Int
-c2' = Free "c2'" T.Int
-j   = Free "j" T.Int
-j'  = Free "j'" T.Int
+x   = Free ["x"] 0 T.Int
+x'  = Free ["x"] 1 T.Int
+c1  = Free ["c1"] 0 T.Int
+c1' = Free ["c1"] 1 T.Int
+m   = Free ["m"] 0 T.Int
+c2  = Free ["c2"] 0 T.Int
+c2' = Free ["c2"] 1 T.Int
+j   = Free ["j"] 0 T.Int
+j'  = Free ["j"] 1 T.Int
 
-r  = Free "r" T.Int
-r' = Free "r'" T.Int
-s  = Free "s" T.Int
-s' = Free "s'" T.Int
-n  = Free "n" T.Int
-p  = Free "p" T.Int
-p' = Free "p'" T.Int
-i  = Free "i" T.Int
-i' = Free "i'" T.Int
+r  = Free ["r"] 0 T.Int
+r' = Free ["r"] 1 T.Int
+s  = Free ["s"] 0 T.Int
+s' = Free ["s"] 1 T.Int
+n  = Free ["n"] 0 T.Int
+p  = Free ["p"] 0 T.Int
+p' = Free ["p"] 1 T.Int
+i  = Free ["i"] 0 T.Int
+i' = Free ["i"] 1 T.Int
 
+ad0 :: ImplGr Integer
+ad0 = G.fromLists
+  [ (0, emptyInst [])
+  , (1, emptyInst [n, r])
+  ]
+  [ (0, 1, Edge [form|r:Int = n:Int - 9 * ((n:Int - 1) / 9)|] M.empty) ]
+
+ad1 :: ImplGr Integer
+ad1 = G.fromLists
+  [ (0, emptyInst [])
+  , (1, emptyInst [m, x])
+  , (2, emptyInst [m, x])
+  ]
+  [ (0, 1, Edge [form|x:Int = m:Int|] M.empty)
+  , (1, 1, Edge [form|x:Int > 9 && x/1:Int = x:Int / 10 + x:Int % 10|] (M.fromList [(x, x')]))
+  , (1, 2, Edge [form|x:Int <= 9|] M.empty)
+  ]
+
+-- main :: IO ()
+-- main = do
+--   sol <- solve 3 3 [form|n:Int = m:Int -> x:Int = r:Int|] cs0 cs1
+--   case sol of
+--     Left e -> print (pretty e)
+--     Right m ->
+--       G.display "sol" m
 
 main :: IO ()
 main = do
-  sol <- solve 3 3 [(n, m)] [(x, r)] g1 g2
+  sol <- solve 1 2 [form|n:Int > 0 && n:Int = m:Int -> x:Int = r:Int|] ad0 ad1
   case sol of
     Left e -> print (pretty e)
     Right m ->

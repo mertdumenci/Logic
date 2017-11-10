@@ -86,13 +86,17 @@ implGrChc g = concatMap idxRules (G.idxs g)
     instApp _ ([], _) = Nothing
     instApp i (vs, _) = Just $ mkApp ('r' : written # i) vs
 
+    idxRule i f rhs = vertRule i f rhs <$> g ^? ix i
+    vertRule i f rhs = \case
+      InstanceV [] _   -> Rule [] f rhs
+      InstanceV vs _   -> Rule [mkApp ('r':written # i) vs] f rhs
+      QueryV _         -> undefined
+
     idxRules i = maybe [] (\case
       InstanceV _ _ ->
         mapMaybe (\(i', Edge f mvs) -> do
           rhs <- subst mvs <$> idxApp i
-          case idxApp i' of
-            Nothing -> Just (Rule [] f rhs)
-            Just lhs -> Just (Rule [lhs] f rhs)) (relevantIncoming i)
+          idxRule i' f rhs) (relevantIncoming i)
       QueryV f -> queries i f) (g ^? ix i)
 
     queries i f =
@@ -107,15 +111,16 @@ implGrChc g = concatMap idxRules (G.idxs g)
 -- | Interpolate the facts in the graph using CHC solving to label the vertices
 -- with fresh definitions.
 interpolate :: MonadIO m => ImplGr Idx -> m (Either Model (ImplGr Idx))
-interpolate g = Z3.solveChc (implGrChc g) >>= \case
-  Left m -> return (Left m)
-  Right m -> return (Right $ applyModel m g)
+interpolate g = (fmap . fmap) (`applyModel` g) (Z3.solveChc (implGrChc g))
 
--- | Replace the fact at each vertex in the graph by the fact in the model.
+-- | Augment the fact at each vertex in the graph by the fact in the model.
 applyModel :: Model -> ImplGr Idx -> ImplGr Idx
 applyModel m = G.imapVerts applyVert
   where
-    applyVert i = _InstanceV . _2 %~ (\f -> f `mkOr` M.findWithDefault (LBool False) i m')
+    applyVert i = _InstanceV %~ applyInst i
+    applyInst i inst =
+      inst & _2 .~ instantiate (fst inst) (M.findWithDefault (LBool False) i m')
+
     m' = M.toList (getModel m)
       & map (traverseOf _1 %%~ interpretName . varName)
       & catMaybes & M.fromList
@@ -135,14 +140,17 @@ runSolve :: Monad m => ExceptT e (StateT (Map k a) m) a1 -> m (Either e a1)
 runSolve ac = evalStateT (runExceptT ac) M.empty
 
 -- | Gather all facts known about each instance of the same index together by disjunction.
-collectAnswer :: ImplGr Idx -> Map Integer Form
-collectAnswer g = execState (G.itravVerts (\i v -> case v of
-  InstanceV _ f -> modify (M.insertWith mkOr (i ^. idxIden) f)
+collectAnswer :: MonadIO m => ImplGr Idx -> m (Map Integer Form)
+collectAnswer g = traverse Z3.superSimplify $ execState (G.itravVerts (\i v -> case v of
+  InstanceV _ f ->
+    if f == LBool True then return ()
+    else modify (M.insertWith mkOr (i ^. idxIden) f)
   _ -> return ()) g) M.empty
 
 -- | Unwind the graph on the given backedge and update all instances in the unwinding.
 unwind :: Solve e m => Idx -> Idx -> e -> Graph Idx e Vert -> m (Idx, Graph Idx e Vert)
-unwind = G.unwind updateInstance (\_ _ -> return) (\_ v -> return $ v & _InstanceV . _2 .~ LBool False)
+unwind = G.unwind updateInstance (\_ _ -> return)
+  (\_ v -> return $ v & _InstanceV . _2 .~ LBool False)
 
 unwindAll :: Solve e m
           => [((Idx, Idx), e)]
@@ -155,11 +163,10 @@ unwindAll bes ind end g = do
     else do (i, g'') <- unwind i1 i2 e g'
             return (i:is, g'')) ([], g) bes
   let g'' = G.ifilterEdges (\i1 i2 _ -> (i1, i2) `notElem` map fst bes) g'
-  return (compress (mconcat $ map (`G.reached` g'') is) g'')
+  return (reachEndWithoutBackedge g'')
   where
-    compress new g' =
+    reachEndWithoutBackedge g' =
       let compressed = g'
-            & G.filterIdxs (\i -> i `notElem` ind || i `elem` G.idxs new)
             & G.ifilterEdges (\i1 i2 _ -> (i1, i2) `notElem` map fst (G.backEdges g'))
             & G.reaches end
       in G.filterIdxs (`elem` G.idxs compressed) g'
