@@ -5,4 +5,7 @@ public class Wunderhorn {
   public static float arby_float() { return 0; }
   public static void ensure(boolean b) {}
   public static void assume(boolean b) {}
+  /* Concurrency primitives. */
+  public static void lock() {}
+  public static void unlock() {}
 }

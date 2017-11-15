@@ -319,8 +319,8 @@ let instr_to_expr vartable loc = function
   (* Static methods! These include `ensure` and friends *)
   | JBir.InvokeStatic (v, cn, ms, args) ->
     let args = List.map ~f:(java_to_expr vartable loc) args in
-    let (kind, ir) = invoke cn ms v args in
-    Some (kind, [], ir)
+    let (expr, ir) = invoke cn ms v args in
+    Some (expr, [], ir)
   (* things we haven't translated yet *)
   | JBir.InvokeNonVirtual _
   | JBir.InvokeVirtual _

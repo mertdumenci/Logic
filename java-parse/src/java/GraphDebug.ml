@@ -24,6 +24,7 @@ module InstrDot = struct
 
   let vertex_label v =
     let open InstrGraph.Instr in
+    let open Ir in
     let instr_txt = JBir.print_instr ~show_type:false v.instr
                     |> String.substr_replace_all ~pattern:">" ~with_:"&gt;"
     in
@@ -59,6 +60,9 @@ module ImplicationDot = struct
   let var_disp = function
     | Ir.Free (qid, _) -> QID.as_path qid
     | v -> Ir.sexp_of_var v |> Sexp.to_string
+  
+  let lock_disp (Ir.Lock i) =
+    Printf.sprintf "Lock %i" i
 
   let formula_to_str (edge: ImplicationGraph.Edge.t) =
     let open ImplicationGraph.Edge in
@@ -96,11 +100,13 @@ module ImplicationDot = struct
     let open ImplicationGraph.Vertex in
     QID.as_path vertex.loc |> Printf.sprintf "\"%s\""
 
-  let vertex_label (vertex: ImplicationGraph.V.t) =
+let vertex_label (vertex: ImplicationGraph.V.t) =
     let open ImplicationGraph.Vertex in
     let path = QID.as_path vertex.loc in
-    Printf.sprintf "<font color=\"grey\" point-size=\"10\">%s</font><br/>{%s}"
-                   path (vertex.live |> List.map ~f:var_disp |> String.concat ~sep:", ")
+    Printf.sprintf "<font color=\"grey\" point-size=\"10\">%s</font><br/>{%s}, {%s}"
+                   path
+                   (vertex.live |> List.map ~f:var_disp |> String.concat ~sep:", ")
+                   (vertex.lock |> List.map ~f:lock_disp |> String.concat ~sep:", ")
 
   let vertex_attributes v = [
       `Shape `Box;

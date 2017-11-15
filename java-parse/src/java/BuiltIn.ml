@@ -65,4 +65,6 @@ let call_built_in_method cn ms v args =
 
   match (cname, mname, args) with
   | ("Wunderhorn", "ensure", [(q, _)]) -> Some (Ir.LBool true, Ir.Query q)
+  | ("Wunderhorn", "lock", []) -> Some (Ir.ELock, Ir.Instance)
+  | ("Wunderhorn", "unlock", []) -> Some (Ir.EUnlock, Ir.Instance)
   | _ -> Printf.sprintf "Method %s.%s not supported." cname mname |> failwith
