@@ -12,6 +12,7 @@ import           Data.List.Split
 import           Data.Text (Text, unpack)
 import           Data.Aeson
 import qualified Data.HashMap.Lazy as HML
+import           Data.Optic.Graph (Graph)
 import qualified Data.Optic.Graph as G
 import qualified Data.ByteString.Lazy.Char8 as BS
 import qualified Data.Vector as V
@@ -24,8 +25,8 @@ import           Logic.Type
 
 -- | Read a bytestring containing JSON into a graph where the indices are names
 -- for the program position.
-parseGraphFromJSON :: BS.ByteString -> ImplGr Line
-parseGraphFromJSON str = maybe G.empty getParsedGraph (decode str)
+parseGraphFromJSON :: BS.ByteString -> Maybe (ImplGr Line Edge)
+parseGraphFromJSON str = fromGraph =<< (getParsedGraph <$> decode str)
 
 data Line = LineNo [String] Int
   deriving (Data, Eq)
@@ -37,7 +38,7 @@ textToLine txt = LineNo path num
             path = init components
             num = read $ last components
 
-newtype ParsedGraph = ParsedGraph { getParsedGraph :: ImplGr Line }
+newtype ParsedGraph = ParsedGraph { getParsedGraph :: Graph Line Edge Vert }
 
 -- | Maps an edge (defined by a start and an end index) to its label.
 data EdgeHolder = EdgeHolder
@@ -49,6 +50,8 @@ data EdgeHolder = EdgeHolder
 -- | A map from each vertex to its neighbors. (Defines the graph topology.)
 type VertexMap = Map Line [Var]
 
+newtype JSONVertex = JVertex Vert
+
 -- | Represents a variable renaming.
 data VarRenaming = VarRenaming Var Var
 
@@ -57,16 +60,13 @@ renameMap renames =
   M.fromList $ map tupelize renames
   where tupelize (VarRenaming a b) = (a, b)
 
-buildGraph :: [EdgeHolder] -> VertexMap -> ImplGr Line
-buildGraph edgeHolders verticesMap =
+buildGraph :: [EdgeHolder] -> Map Line JSONVertex -> Graph Line Edge Vert
+buildGraph edgeHolders vertexMap =
   let
-    vertices = map vertex $ M.toList verticesMap
-    edges = map edge edgeHolders
+    vertices = map (\(iv, JVertex v) -> (iv, v)) $ M.toList vertexMap
+    edges = map (\(EdgeHolder v1 v2 e) -> (v1, v2, e)) edgeHolders
   in
     G.fromLists vertices edges
-  where
-    vertex (idV, varsList) = (idV, InstanceV varsList (LBool False))
-    edge (EdgeHolder v1 v2 e) = (v1, v2, e)
 
 instance Ord Line where
   compare (LineNo path num) (LineNo path' num') = case compare path path' of
@@ -75,6 +75,9 @@ instance Ord Line where
 
 instance Show Line where
   show (LineNo path num) = L.intercalate "/" $ path ++ [show num]
+
+instance IntoIdx Line where
+  intoIdx (LineNo _ n) = Idx (toInteger n) 0
 
 instance Pretty Line where
   pretty = pretty . show
@@ -94,6 +97,18 @@ instance FromJSON ParsedGraph where
     edges <- o .: "edges" >>= parseJSON
     vertices <- o .: "vertices" >>= parseJSON
     return $ ParsedGraph $ buildGraph edges vertices
+  parseJSON _ = mzero
+
+instance FromJSON JSONVertex where
+  parseJSON (Object o) = do
+    kind <- o .: "type"
+    live <- o .: "live" >>= parseJSON
+    case kind of
+      (String t) | t == "instance" ->
+                   return $ JVertex $ InstanceV live (LBool False)
+      (String t) | t == "query" ->
+                   (JVertex . QueryV) <$> (o .: "query" >>= parseJSON)
+      _ -> mzero
   parseJSON _ = mzero
 
 instance FromJSON EdgeHolder where

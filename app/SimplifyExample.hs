@@ -1,4 +1,5 @@
 {-# LANGUAGE QuasiQuotes #-}
+import           Control.Lens
 
 import           Data.Optic.Graph (Graph)
 import qualified Data.Optic.Graph as G
@@ -6,8 +7,10 @@ import qualified Data.Optic.Graph.Extras as G
 import qualified Data.Map as M
 import           Data.Text.Prettyprint.Doc
 import qualified Data.ByteString.Lazy.Char8 as BS
+import           Data.Maybe (fromJust)
 
 import           Logic.ImplicationGraph
+import           Logic.ImplicationGraph.Safety
 import           Logic.ImplicationGraph.Simplify as S
 import           Logic.ImplicationGraph.JSONParser (parseGraphFromJSON)
 import qualified Logic.Type as T
@@ -27,10 +30,21 @@ main = let
         print $ _edgeMap dj
         print $ pretty $ _edgeForm dj
 
-        parsedGraph <- parseGraphFromJSON <$> BS.readFile "test.json"
-        putStrLn "Trying to simplify JSON:"
-        G.display "before.dot" parsedGraph
-        G.display "simplified.dot" $ S.prune parsedGraph
+        parsedGraph <- fromJust . parseGraphFromJSON <$> BS.readFile "test.json"
+        let pruned = parsedGraph & implGr %~ S.prune
+        putStrLn "Trying to simplify JSON..."
+        G.display "before.dot" (parsedGraph ^. implGr)
+        G.display "simplified.dot" (pruned ^. implGr)
+
+        sol <- solve pruned
+        case sol of
+          Left m -> do
+            putStrLn "Could not prove safety:"
+            print (pretty m)
+          Right r -> do
+            putStrLn "Safe!"
+            G.display "solved.dot" (r ^. implGr)
+            print . pretty . M.toList =<< collectAnswer r
 
 i :: Var
 i  = Free ["i"] 0 T.Int
@@ -67,17 +81,17 @@ disjunctionExample =
 
         e1 = Edge {
             _edgeMap = M.fromList [(i, i')],
-            _edgeForm = foldl1 mkAnd $ 
-                [(Eql T.Int :@ V i :@ LInt 0)
-                , (Eql T.Int :@ V i' :@ V i)]
+            _edgeForm = foldl1 mkAnd
+                        [ Eql T.Int :@ V i :@ LInt 0
+                        , Eql T.Int :@ V i' :@ V i]
         }
 
         e2 = Edge {
             _edgeMap = M.fromList [(i, i'')],
-            _edgeForm = foldl1 mkAnd $ 
-                [(Eql T.Int :@ V i :@ LInt 0)
-                , (Eql T.Int :@ V i' :@ V i)
-                , (Eql T.Int :@ V i'' :@ V i')]
+            _edgeForm = foldl1 mkAnd
+                        [Eql T.Int :@ V i :@ LInt 0
+                        , Eql T.Int :@ V i' :@ V i
+                        , Eql T.Int :@ V i'' :@ V i']
         }
     in
         (e1, e2)
