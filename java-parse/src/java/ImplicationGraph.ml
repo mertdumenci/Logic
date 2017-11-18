@@ -19,7 +19,6 @@ module Vertex = struct
   type t = {
       loc: QualifiedIdentity.t;
       live: Ir.var list;
-      lock: Ir.lock list;
       kind: Ir.vkind;
     }
   [@@deriving hash, compare]
@@ -32,7 +31,7 @@ include Graph.Persistent.Digraph.ConcreteBidirectionalLabeled(Vertex)(Edge)
 
 
 let add_action
-  v v' expr rename lock k vartable graph
+  v v' expr rename k vartable graph
   =
   let open Vertex in
   let open Edge in
@@ -43,13 +42,11 @@ let add_action
   let start = {
     loc = v.InstrGraph.Instr.loc;
     live = live_names v.InstrGraph.Instr.live;
-    lock = lock;
     kind = Ir.Instance;
   } in
   let finish = {
     loc = v'.InstrGraph.Instr.loc;
     live = live_names v'.InstrGraph.Instr.live;
-    lock = lock;
     kind = k;
   } in
   let edge = {
@@ -65,7 +62,7 @@ let to_implication
   =
   let build
         ((v: InstrGraph.V.t), (e: InstrGraph.E.label), (v': InstrGraph.V.t))
-        ((graph: t), (lock: Ir.lock list)) =
+        ((graph: t), (lock_cnt: int)) =
     let open Vertex in
     let open Edge in
     let instr = v.InstrGraph.Instr.instr in
@@ -76,24 +73,13 @@ let to_implication
       | (Some (expr, r, k), InstrGraph.Branch.False) -> (Ir.ExprCons (Ir.Not, expr), r, k)
       | (None, _) -> (Ir.LBool true, [], Ir.Instance)
     in
-    let push_lock (lock: Ir.lock list) =
-      match lock with
-        | ((Ir.Lock i) :: _) -> Ir.Lock (i + 1) :: lock
-        | _ -> [Ir.Lock 0]
+    let (expr, lock_cnt') = match expr with
+      | Ir.ELock _ -> (Ir.ELock (lock_cnt + 1), lock_cnt + 1)
+      | _ -> (expr, lock_cnt)
     in
-    let pop_lock (lock: Ir.lock list) =
-      match lock with
-        | (_ :: xs) -> xs
-        | _ -> failwith "Trying to unlock a nonexistent lock."
-    in
-    let (expr, rename, lock, k) = match expr with
-      | Ir.ELock -> (Ir.LBool true, [], push_lock lock, Ir.Instance)
-      | Ir.EUnlock -> (Ir.LBool true, [], pop_lock lock, Ir.Instance)
-      | _ -> (expr, rename, lock, k)
-    in
-    (add_action v v' expr rename lock k vartable graph, lock)
+    (add_action v v' expr rename k vartable graph, lock_cnt')
   in
-  InstrGraph.fold_edges_e build instr_graph (empty, []) |> fst
+  InstrGraph.fold_edges_e build instr_graph (empty, 0) |> fst
 
 
 let serialize (graph: t) =
@@ -103,22 +89,16 @@ let serialize (graph: t) =
                 |> List.map ~f:Ir.jsonsexp_var
                 |> String.concat ~sep:","
     in
-    let lock = v.lock
-                |> List.map ~f:Ir.jsonsexp_lock
-                |> String.concat ~sep:","
-    in
     (match v.kind with
-     | Ir.Instance -> Printf.sprintf "\"%s\":{\"type\":\"%s\",\"live\":[%s], \"lock\":[%s]}"
+     | Ir.Instance -> Printf.sprintf "\"%s\":{\"type\":\"%s\",\"live\":[%s]}"
                         (QID.as_path v.loc)
                         (Ir.string_of_vkind v.kind)
                         lives
-                        lock
-     | Ir.Query ex -> Printf.sprintf "\"%s\":{\"type\":\"%s\",\"query\":%s,\"live\":[%s], \"lock\":[%s]}"
+     | Ir.Query ex -> Printf.sprintf "\"%s\":{\"type\":\"%s\",\"query\":%s,\"live\":[%s]"
                         (QID.as_path v.loc)
                         (Ir.string_of_vkind v.kind)
                         (Ir.jsonsexp_expr ex)
                         lives
-                        lock
     ) :: l
   in
   let vertices = fold_vertex collect_vertices graph [] in

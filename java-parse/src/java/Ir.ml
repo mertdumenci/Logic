@@ -23,10 +23,6 @@ type var = Bound of int * kind
 [@@deriving hash, compare, sexp]
 
 
-type lock = Lock of int
-[@@deriving hash, compare, sexp]
-
-
 type expr = Var of var
           | If of kind
 
@@ -61,7 +57,7 @@ type expr = Var of var
           | ExprCons of expr * expr
 
           (* Locking primitives *)
-          | ELock
+          | ELock of int
           | EUnlock
 [@@deriving hash, compare, sexp]
 
@@ -163,9 +159,6 @@ let jsonsexp_qid (QID.QID l) =
   in
   List.map l ~f:wrap_if_str |> jsonsexp "qid"
 
-let jsonsexp_lock (Lock i) =
-  jsonsexp "lock" [string_of_int i]
-
 let jsonsexp_var = function
   | Bound (i, k) -> jsonsexp "bound" [string_of_int i; jsonsexp_kind k]
   | Free (n, k) -> jsonsexp "free" [jsonsexp_qid n; jsonsexp_kind k]
@@ -203,5 +196,5 @@ let rec jsonsexp_expr = function
 
   | ExprCons (a, b) -> jsonsexp "exprcons" [jsonsexp_expr a; jsonsexp_expr b]
 
-  | ELock -> jsonsexp "elock" []
+  | ELock i -> jsonsexp "elock" [string_of_int i]
   | EUnlock -> jsonsexp "eunlock" []
